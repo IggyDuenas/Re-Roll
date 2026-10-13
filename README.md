@@ -1,6 +1,8 @@
 # re·roll
 
-Face-value ticket resale, a play on Dice. Buy tickets to live events. Can't go? **Re-roll** the ticket: it goes back on sale at face value and moves to the next buyer. There is no way to set a price, so a markup is impossible.
+A fan-to-fan ticket marketplace. Fans who can't go list their ticket (for example a Dice ticket) at a **capped** price; buyers pay into **escrow**; the seller delivers; Re-Roll releases the money and keeps a cut.
+
+Re-Roll is independent of Dice and event organizers. Ticket issuers may not permit resale and can cancel resold tickets, so the product states this on every sell/buy page. Check the resale laws where you operate before launching.
 
 ## Quick start
 
@@ -9,25 +11,41 @@ npm install
 npm run dev        # http://localhost:3000
 ```
 
-No setup needed. Data lives in `.data/db.json` (created and seeded with 6 events on first run; delete it to reset). Tickets are "texted" by printing the link to the server console, and the buy form also shows the link in dev.
+No setup needed: data lives in `.data/db.json` (created and seeded with 6 events and a few demo listings on first run; delete it to reset). SMS messages print to the server console. **Payments are simulated** (see TODO).
 
 Copy `.env.example` to `.env.local` to configure:
 
 | Variable | Effect |
 | --- | --- |
-| `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` | Use Supabase instead of the local file. Run `supabase/schema.sql` first. |
-| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` | Send real SMS. Otherwise the link is logged. |
-| `APP_URL` | Base URL used in SMS links (default: request origin). |
-| `APP_TIMEZONE` | Display timezone for event times (default `America/New_York`). |
+| `MAX_MARKUP_PCT` (150) | Max asking price as % of face value |
+| `PLATFORM_FEE_PCT` (10) | Re-Roll's cut, deducted from the seller's payout |
+| `RESERVE_MINUTES` (15) | How long a buyer has to pay after reserving |
+| `CRON_SECRET`, `ADMIN_SECRET` | Enable the operator endpoints below (disabled while unset) |
+| `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` | Use Supabase instead of the local file; run `supabase/schema.sql` first (it drops the old `tickets` table) |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` | Send real SMS |
+| `APP_URL`, `APP_TIMEZONE` | SMS link base URL; display timezone |
 
-## How it works
+## How a sale works
 
-- `remaining = capacity − tickets(valid | used)`. Listed tickets count as available.
-- **Buy** (`POST /api/tickets {eventId, phone, name}`): phone is normalized to E.164 (10 digits → `+1`), max 4 per phone per event, `409` if sold out. If any ticket is listed, the buyer gets the **oldest** one: same row, **new token**, new phone/name, status `valid`. The seller's old link and QR die instantly (404). Otherwise a new ticket is created.
-- **Re-roll** (`POST /api/tickets/[token]/reroll {action: 'list' | 'cancel'}`): `list` only for a valid ticket on a future event; `cancel` only for a still-listed ticket. `404` if the token no longer exists, `409` for other invalid states.
-- Local store serializes every write through a single in-process queue (read-modify-write with an atomic file rename), so concurrent requests can't oversell. Verified: 10 parallel buys for 2 remaining spots gave 2 × `201` and 8 × `409`.
-- Supabase store claims listed tickets with a conditional update (`where status = 'listed'`).
-- Data layer is the `Store` interface in `lib/types.ts`; implementations are in `lib/store/`.
+1. **List** (`/sell`): seller picks an event, enters the face value they paid, an asking price (≤ cap), their Dice order reference (private, for disputes), and confirms ownership. They get a private seller link by SMS.
+2. **Reserve** (`/l/[id]`): a buyer reserves the listing. The claim is atomic, so only one buyer wins. The reservation lapses after `RESERVE_MINUTES` and the listing goes back on sale.
+3. **Pay** (`/o/[token]`): the buyer's payment goes into escrow. Seller is texted.
+4. **Deliver** (`/s/[token]`): the seller delivers the ticket outside Re-Roll and marks it delivered with a note. Buyer is texted.
+5. **Release**: buyer confirms, and the seller is paid `price − fee`. Or `POST /api/cron/settle` releases delivered orders 24h after the event, and refunds paid-but-undelivered orders once the event starts.
+6. **Problems**: the buyer can report a problem (freezes the payment); the seller can refund a sale they can't deliver; the operator resolves disputes with `POST /api/admin/orders/<id> {action: 'release' | 'refund'}` (Bearer `ADMIN_SECRET`).
+
+Order states: `pending_payment → escrowed → delivered → released`, plus `disputed`, `refunded`, `expired`. Listing states: `active`, `reserved`, `sold`, `cancelled`.
+
+The `Store` interface is in `lib/types.ts`; implementations are `lib/store/local.ts` (writes serialized through one in-process queue, atomic file rename) and `lib/store/supabase.ts` (conditional updates `where status = ...` plus a unique index allowing one live order per listing). Payments sit behind `lib/payments.ts`.
+
+## Tests
+
+```bash
+rm -rf .data && npm run build && npm start &   # in another shell:
+node tools/e2e.mjs http://localhost:3000
+```
+
+Covers the price cap, simultaneous-reservation race, escrow → delivery → release, refund, dispute, cancel and auth on operator endpoints.
 
 ## Site audit tool
 
@@ -35,13 +53,15 @@ Copy `.env.example` to `.env.local` to configure:
 node tools/audit.mjs http://localhost:3000 --crawl 6 --out audit-out --delay 1000
 ```
 
-Uses `playwright-core` (point `CHROMIUM_PATH` at a Chromium binary if needed). Reads `robots.txt` and skips disallowed paths, identifies itself honestly in the user-agent, waits `--delay` ms between requests, and follows same-origin links up to `--crawl` pages. Per page it saves `mobile.png` (390×844) and `desktop.png` (1280×800) full-page screenshots and `outline.json`; `features.md` summarizes the crawl. Public pages only: no logins, no form submission, no private APIs.
+`playwright-core` (set `CHROMIUM_PATH` if needed). Reads `robots.txt`, skips disallowed paths, uses an honest user-agent, waits `--delay` ms between requests, follows same-origin links up to `--crawl` pages, and saves mobile (390×844) and desktop (1280×800) screenshots, `outline.json` per page and `features.md`. Public pages only: no logins, no form submission, no private APIs.
 
-## TODO (not in the MVP)
+## TODO
 
-- [ ] Stripe payments, with a refund to the seller when their re-rolled ticket sells
-- [ ] Phone-code (SMS OTP) login so holders can see all their tickets
-- [ ] Door scanner that marks tickets `used`
-- [ ] Organizer dashboard
-- [ ] Sold-out waitlist
-- [ ] Postgres row lock (or RPC) for the primary-sale capacity race in the Supabase store (re-roll claims are already atomic)
+- [ ] **Real payments**: Stripe adapter in `lib/payments.ts` (hold funds at payment, pay out `payout_cents` on release, refund on refund). Today `payments` is a demo that only logs.
+- [ ] Phone-code login (sellers and buyers are identified only by phone number plus private links)
+- [ ] Ticket proof upload (screenshot) and verification; today proof is a free-text note
+- [ ] Operator dashboard for disputes (currently an authenticated endpoint; order ids are in the dispute log)
+- [ ] Organizer-submitted events / official event feeds (events are seeded sample data)
+- [ ] Scheduled job to call `/api/cron/settle`
+- [ ] Rate limiting and abuse controls on listing and reservation endpoints
+- [ ] Door scanner, sold-out waitlist

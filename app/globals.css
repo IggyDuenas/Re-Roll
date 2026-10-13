@@ -108,3 +108,15 @@ dialog::backdrop { background: rgba(0,0,0,.7); }
 dialog h3 { margin-bottom: 8px; }
 dialog p { color: var(--muted); margin: 0 0 16px; }
 dialog .actions { display: grid; gap: 8px; }
+
+/* marketplace */
+select { width: 100%; background: var(--bg-2); border: 1px solid var(--line); color: var(--text); border-radius: 12px; padding: 12px 14px; min-height: 44px; font: inherit; }
+select:focus { border-color: var(--ember); outline: none; box-shadow: 0 0 0 3px rgba(255,106,61,.2); }
+.listings { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.listing { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; transition: border-color .15s; }
+.listing:hover { border-color: var(--ember); }
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: .9rem; color: var(--muted); cursor: pointer; }
+.check input { margin-top: 4px; accent-color: var(--ember); width: 18px; height: 18px; flex: none; }
+.err-text { color: var(--bad); }
+.demo { color: var(--warn); }
+.hero .btn { text-decoration: none; }

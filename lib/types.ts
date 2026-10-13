@@ -1,4 +1,5 @@
-export type TicketStatus = 'valid' | 'listed' | 'returned' | 'used';
+export type ListingStatus = 'active' | 'reserved' | 'sold' | 'cancelled';
+export type OrderStatus = 'pending_payment' | 'escrowed' | 'delivered' | 'released' | 'disputed' | 'refunded' | 'expired';
 
 export interface EventRow {
   id: string;
@@ -6,43 +7,57 @@ export interface EventRow {
   artist: string;
   venue: string;
   city: string;
-  starts_at: string; // ISO timestamp
-  price_cents: number;
-  capacity: number;
+  starts_at: string; // ISO
+  price_cents: number; // typical face value, for reference
   description: string;
   genre: string;
 }
 
-export interface TicketRow {
+export interface EventWithStats extends EventRow {
+  activeListings: number;
+  /** cheapest active asking price, null when none */
+  fromPriceCents: number | null;
+}
+
+export interface ListingRow {
   id: string;
   event_id: string;
-  token: string;
-  phone: string; // E.164
-  holder_name: string | null;
-  status: TicketStatus;
+  seller_token: string; // unguessable, grants access to the seller page
+  seller_phone: string; // E.164
+  seller_name: string | null;
+  face_value_cents: number;
+  price_cents: number;
+  proof_note: string; // Dice order reference / details the seller provided
+  status: ListingStatus;
   created_at: string;
 }
+/** What the public may see. */
+export type PublicListing = Omit<ListingRow, 'seller_token' | 'seller_phone' | 'proof_note'>;
 
-export interface EventWithStats extends EventRow {
-  /** capacity - tickets with status valid or used. Listed tickets count as available. */
-  remaining: number;
-  /** tickets currently re-rolled and back on sale at face value */
-  listed: number;
+export interface OrderRow {
+  id: string;
+  listing_id: string;
+  event_id: string;
+  buyer_token: string; // unguessable, grants access to the order page
+  buyer_phone: string;
+  buyer_name: string | null;
+  price_cents: number;
+  fee_cents: number;
+  payout_cents: number;
+  status: OrderStatus;
+  delivery_note: string | null;
+  dispute_reason: string | null;
+  expires_at: string;
+  created_at: string;
+  paid_at: string | null;
+  delivered_at: string | null;
+  closed_at: string | null;
 }
 
-export interface PurchaseInput {
-  eventId: string;
-  phone: string; // already normalized
-  name: string | null;
-}
+export interface OrderView { order: OrderRow; listing: PublicListing; event: EventRow; sellerPhone: string }
+export interface SellerView { listing: ListingRow; order: OrderRow | null; event: EventRow }
 
-export interface PurchaseResult {
-  ticket: TicketRow;
-  /** true when the buyer received a re-rolled ticket instead of a fresh one */
-  resold: boolean;
-}
-
-export type StoreErrorCode = 'event_not_found' | 'ticket_not_found' | 'sold_out' | 'limit_reached' | 'invalid_state';
+export type StoreErrorCode = 'event_not_found' | 'listing_not_found' | 'order_not_found' | 'invalid_state' | 'own_listing';
 
 export class StoreError extends Error {
   constructor(public code: StoreErrorCode, message?: string) {
@@ -51,20 +66,43 @@ export class StoreError extends Error {
   }
 }
 
-export const MAX_TICKETS_PER_PHONE = 4;
+export interface CreateListingInput {
+  eventId: string;
+  sellerPhone: string;
+  sellerName: string | null;
+  faceValueCents: number;
+  priceCents: number;
+  proofNote: string;
+}
 
 export interface Store {
-  /** Upcoming events, optionally filtered by search text (title, artist, venue, city, genre). */
   listEvents(query?: string): Promise<EventWithStats[]>;
   getEvent(id: string): Promise<EventWithStats | null>;
-  getTicket(token: string): Promise<TicketRow | null>;
-  /**
-   * Sells one ticket. Hands out the OLDEST listed ticket if any exist (rotating its token so the
-   * seller's old link dies), otherwise creates a new one. Throws StoreError.
-   */
-  purchase(input: PurchaseInput): Promise<PurchaseResult>;
-  /** valid -> listed (future events only). Throws ticket_not_found / invalid_state. */
-  listTicket(token: string): Promise<TicketRow>;
-  /** listed -> valid. Throws ticket_not_found / invalid_state. */
-  cancelListing(token: string): Promise<TicketRow>;
+  listActiveListings(eventId: string): Promise<PublicListing[]>;
+  getListing(id: string): Promise<PublicListing | null>;
+
+  createListing(input: CreateListingInput): Promise<ListingRow>;
+  getSellerView(sellerToken: string): Promise<SellerView | null>;
+  /** active -> cancelled */
+  cancelListing(sellerToken: string): Promise<ListingRow>;
+
+  /** Atomically claims an active listing (active -> reserved) and opens a pending order. */
+  reserve(listingId: string, buyer: { phone: string; name: string | null }): Promise<OrderRow>;
+  getOrderView(buyerToken: string): Promise<OrderView | null>;
+  /** Server-only: seller's phone + manage token, for notifications. Never expose to clients. */
+  getSellerContact(listingId: string): Promise<{ phone: string; token: string } | null>;
+  /** pending_payment -> escrowed (listing -> sold). Call after funds are captured into escrow. */
+  markPaid(buyerToken: string): Promise<OrderRow>;
+  /** escrowed -> delivered */
+  markDelivered(sellerToken: string, note: string): Promise<OrderRow>;
+  /** delivered -> released (seller gets paid) */
+  confirmReceived(buyerToken: string): Promise<OrderRow>;
+  /** escrowed | delivered -> disputed */
+  openDispute(buyerToken: string, reason: string): Promise<OrderRow>;
+  /** escrowed -> refunded: seller cannot deliver */
+  sellerRefund(sellerToken: string): Promise<OrderRow>;
+  /** disputed -> released | refunded (operator decision) */
+  resolveDispute(orderId: string, outcome: 'release' | 'refund'): Promise<OrderRow>;
+  /** Sweep: delivered orders past the release window -> released; undelivered paid orders for started events -> refunded. */
+  settleDue(): Promise<{ released: OrderRow[]; refunded: OrderRow[] }>;
 }

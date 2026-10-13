@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { BuyForm } from '@/components/BuyForm';
-import { Badges, coverStyle } from '@/components/EventCard';
+import { coverStyle } from '@/components/EventCard';
+import { Disclosure } from '@/components/shared';
 import { dateLong, money } from '@/lib/format';
+import { markupPct } from '@/lib/pricing';
 import { getStore } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
@@ -14,9 +15,11 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
 }
 
 export default async function EventPage({ params }: { params: { id: string } }) {
-  const e = await getStore().getEvent(params.id);
+  const store = getStore();
+  const e = await store.getEvent(params.id);
   if (!e) notFound();
   const past = new Date(e.starts_at).getTime() <= Date.now();
+  const listings = past ? [] : await store.listActiveListings(e.id);
   return (
     <article className="detail narrow">
       <Link href="/" className="back">← All events</Link>
@@ -24,21 +27,35 @@ export default async function EventPage({ params }: { params: { id: string } }) 
       <h1>{e.title}</h1>
       <div className="meta">{e.artist !== e.title && <>{e.artist} · </>}{dateLong(e.starts_at)}</div>
       <div className="meta">{e.venue}, {e.city}</div>
-      <div className="row" style={{ marginTop: 14 }}>
-        <span className="price">{money(e.price_cents)}</span>
-        <Badges e={e} />
-      </div>
-      {e.listed > 0 && (
-        <div className="notice" style={{ borderColor: 'rgba(255,106,61,.45)' }}>
-          <strong>{e.listed} re-rolled at face value.</strong> Fans who couldn&apos;t go put these back on sale at {money(e.price_cents)}. The next buyer gets them first.
-        </div>
-      )}
       <p>{e.description}</p>
-      <section className="panel" aria-labelledby="buy">
-        <h2 id="buy">Get a ticket</h2>
+
+      <section className="panel" aria-labelledby="tix">
+        <div className="row" style={{ marginTop: 0, marginBottom: 12 }}>
+          <h2 id="tix" style={{ margin: 0 }}>Tickets from fans</h2>
+          {!past && <Link className="btn ghost" href={`/sell?event=${e.id}`}>Sell yours</Link>}
+        </div>
         {past ? <div className="notice err">This event has already happened.</div>
-          : <BuyForm eventId={e.id} soldOut={e.remaining === 0} priceLabel={money(e.price_cents)} />}
+          : listings.length === 0 ? <div className="empty">No tickets listed yet. Check back or list yours.</div>
+          : (
+            <ul className="listings">
+              {listings.map((l) => {
+                const pct = markupPct(l.face_value_cents, l.price_cents);
+                return (
+                  <li key={l.id}>
+                    <Link href={`/l/${l.id}`} className="listing">
+                      <div>
+                        <div className="price">{money(l.price_cents)}</div>
+                        <div className="meta">Face value {money(l.face_value_cents)} · {l.seller_name ?? 'A fan'}</div>
+                      </div>
+                      <span className={`badge ${pct > 0 ? 'reroll' : 'left'}`}>{pct > 0 ? `+${pct}% over face` : 'Face value'}</span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
       </section>
+      <div style={{ marginTop: 20 }}><Disclosure compact /></div>
     </article>
   );
 }

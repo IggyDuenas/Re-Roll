@@ -10,9 +10,9 @@ export function coverStyle(seed: string) {
 export function Badges({ e }: { e: EventWithStats }) {
   return (
     <div className="badges">
-      {e.remaining === 0 ? <span className="badge out">Sold out</span>
-        : <span className={`badge ${e.remaining <= 10 ? 'low' : 'left'}`}>{e.remaining} left</span>}
-      {e.listed > 0 && <span className="badge reroll">Re-rolled tickets</span>}
+      {e.activeListings > 0
+        ? <span className="badge left">{e.activeListings} {e.activeListings === 1 ? 'ticket' : 'tickets'}</span>
+        : <span className="badge">No tickets yet</span>}
     </div>
   );
 }
@@ -25,7 +25,7 @@ export function EventCard({ e }: { e: EventWithStats }) {
         <h3>{e.title}</h3>
         <div className="meta">{dateShort(e.starts_at)} · {e.venue}, {e.city}</div>
         <div className="row">
-          <span className="price">{money(e.price_cents)}</span>
+          <span className="price">{e.fromPriceCents != null ? <>from {money(e.fromPriceCents)}</> : <span className="meta">Face {money(e.price_cents)}</span>}</span>
           <Badges e={e} />
         </div>
       </div>
