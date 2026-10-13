@@ -28,11 +28,13 @@ export interface ListingRow {
   face_value_cents: number;
   price_cents: number;
   proof_note: string; // Dice order reference / details the seller provided
+  stripe_account_id: string | null; // seller's Stripe Connect Express account (Stripe mode)
+  payouts_ready: boolean; // seller finished payout onboarding; required to be buyable in Stripe mode
   status: ListingStatus;
   created_at: string;
 }
 /** What the public may see. */
-export type PublicListing = Omit<ListingRow, 'seller_token' | 'seller_phone' | 'proof_note'>;
+export type PublicListing = Omit<ListingRow, 'seller_token' | 'seller_phone' | 'proof_note' | 'stripe_account_id'>;
 
 export interface OrderRow {
   id: string;
@@ -45,6 +47,8 @@ export interface OrderRow {
   fee_cents: number;
   payout_cents: number;
   status: OrderStatus;
+  payment_ref: string | null; // Stripe PaymentIntent id once paid (null in demo mode)
+  settlement_ref: string | null; // Stripe Transfer (released) or Refund (refunded) id once money has moved
   delivery_note: string | null;
   dispute_reason: string | null;
   expires_at: string;
@@ -90,9 +94,22 @@ export interface Store {
   reserve(listingId: string, buyer: { phone: string; name: string | null }): Promise<OrderRow>;
   getOrderView(buyerToken: string): Promise<OrderView | null>;
   /** Server-only: seller's phone + manage token, for notifications. Never expose to clients. */
-  getSellerContact(listingId: string): Promise<{ phone: string; token: string } | null>;
-  /** pending_payment -> escrowed (listing -> sold). Call after funds are captured into escrow. */
-  markPaid(buyerToken: string): Promise<OrderRow>;
+  getSellerContact(listingId: string): Promise<{ phone: string; token: string; stripeAccountId: string | null } | null>;
+  /** Server-only lookup by id (webhooks). */
+  getOrderById(orderId: string): Promise<OrderRow | null>;
+  /**
+   * pending_payment -> escrowed (listing -> sold). Call after funds are captured into escrow.
+   * Idempotent: repeating with the same paymentRef on an already-paid order returns it unchanged.
+   */
+  markPaidById(orderId: string, paymentRef: string | null): Promise<OrderRow>;
+  /** Stripe mode: remember the seller's connected account (created at payout setup). */
+  setSellerAccount(sellerToken: string, accountId: string): Promise<void>;
+  /** Stripe mode: flip payouts_ready for every listing on that connected account. */
+  setPayoutsReady(accountId: string, ready: boolean): Promise<void>;
+  /** Record the Transfer/Refund id once money has actually moved. */
+  setSettlementRef(orderId: string, ref: string): Promise<void>;
+  /** Released/refunded orders that were paid through Stripe but whose payout/refund hasn't been recorded (retry queue). */
+  listPendingSettlements(): Promise<OrderRow[]>;
   /** escrowed -> delivered */
   markDelivered(sellerToken: string, note: string): Promise<OrderRow>;
   /** delivered -> released (seller gets paid) */

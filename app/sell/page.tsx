@@ -20,7 +20,7 @@ export default async function SellPage({ searchParams }: { searchParams: { event
       </p>
       <div className="panel">
         {events.length === 0 ? <div className="empty">No upcoming events to list against yet.</div>
-          : <SellForm events={events.map((e) => ({ id: e.id, label: `${e.title}: ${dateShort(e.starts_at)}, ${e.city}` }))} initialEvent={searchParams.event ?? ''} maxMarkupPct={config.maxMarkupPct} feePct={config.feePct} />}
+          : <SellForm events={events.map((e) => ({ id: e.id, label: `${e.title}: ${dateShort(e.starts_at)}, ${e.city}` }))} initialEvent={searchParams.event ?? ''} maxMarkupPct={config.maxMarkupPct} feePct={config.feePct} needsPayouts={config.stripeEnabled} />}
       </div>
       <div style={{ marginTop: 20 }}><Disclosure /></div>
     </div>

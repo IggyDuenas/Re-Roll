@@ -1,7 +1,9 @@
 import { errorResponse, json, readJson, text } from '@/lib/api';
 import { payments } from '@/lib/payments';
+import { settleOrder } from '@/lib/settlement';
 import { baseUrl, sendSms } from '@/lib/sms';
 import { getStore } from '@/lib/store';
+import { notifySellerPaid } from '@/lib/notify';
 import { isTokenShaped } from '@/lib/tokens';
 import { StoreError } from '@/lib/types';
 
@@ -21,22 +23,20 @@ export async function POST(req: Request, { params }: { params: { token: string }
 
     if (action === 'pay') {
       if (view.order.status !== 'pending_payment') throw new StoreError('invalid_state');
-      await payments.hold(view.order);
-      let order;
-      try {
-        order = await store.markPaid(params.token);
-      } catch (err) {
-        await payments.refund(view.order); // reservation lapsed between hold and commit: never keep money without a sale
-        throw err;
-      }
-      const seller = await store.getSellerContact(view.listing.id);
-      if (seller) void sendSms(seller.phone, `re·roll: your ticket for ${view.event.title} sold for $${(order.price_cents / 100).toFixed(2)}. Payment is held in escrow. Deliver the ticket now: ${baseUrl(req)}/s/${seller.token}`);
+      const base = baseUrl(req);
+      const start = await payments.startPayment(view.order, view.event, {
+        success: `${base}/o/${params.token}?paid=1`,
+        cancel: `${base}/o/${params.token}`,
+      });
+      if (start.kind === 'redirect') return json({ ok: true, redirect: start.url }); // the Stripe webhook completes the sale
+      const order = await store.markPaidById(view.order.id, start.paymentRef);
+      await notifySellerPaid(store, order, view.event.title, base);
       return json({ ok: true, status: order.status });
     }
 
     if (action === 'confirm') {
       const order = await store.confirmReceived(params.token);
-      await payments.release(order);
+      await settleOrder(store, order);
       void sendSms(view.sellerPhone, `re·roll: the buyer confirmed your ticket for ${view.event.title}. $${(order.payout_cents / 100).toFixed(2)} is being paid out to you.`);
       return json({ ok: true, status: order.status });
     }

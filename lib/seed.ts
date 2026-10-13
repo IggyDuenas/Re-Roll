@@ -1,3 +1,4 @@
+import { config } from './config';
 import { newId, newToken } from './tokens';
 import type { EventRow, ListingRow } from './types';
 
@@ -21,9 +22,10 @@ export function seedEvents(): EventRow[] {
 
 /** Demo listings so the marketplace isn't empty on first run (fake sellers, fake proof). */
 export function seedListings(): ListingRow[] {
+  if (config.stripeEnabled) return []; // fake sellers can't be paid out
   const mk = (event_id: string, name: string, face: number, price: number, n: number): ListingRow => ({
     id: newId(), event_id, seller_token: newToken(), seller_phone: `+1555010${1000 + n}`.slice(0, 12),
-    seller_name: name, face_value_cents: face, price_cents: price, proof_note: 'Demo seed listing',
+    seller_name: name, face_value_cents: face, price_cents: price, proof_note: 'Demo seed listing', stripe_account_id: null, payouts_ready: true,
     status: 'active', created_at: new Date(Date.now() - n * 3600_000).toISOString(),
   });
   return [

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { AutoRefresh } from '@/components/AutoRefresh';
 import { OrderActions } from '@/components/OrderActions';
 import { Disclosure, STATUS_LABEL } from '@/components/shared';
 import { dateLong, money } from '@/lib/format';
@@ -21,7 +22,7 @@ const COPY: Record<string, string> = {
   expired: 'This reservation expired and the ticket went back on sale.',
 };
 
-export default async function OrderPage({ params }: { params: { token: string } }) {
+export default async function OrderPage({ params, searchParams }: { params: { token: string }; searchParams: { paid?: string } }) {
   if (!isTokenShaped(params.token)) notFound();
   const view = await getStore().getOrderView(params.token);
   if (!view) notFound();
@@ -37,6 +38,9 @@ export default async function OrderPage({ params }: { params: { token: string } 
         <div className="dotted" />
         <div className="row" style={{ marginTop: 0 }}><span className="meta">Ticket price</span><span className="price">{money(o.price_cents)}</span></div>
         <p className="meta" style={{ marginTop: 12 }}>{COPY[o.status]}</p>
+        {o.status === 'pending_payment' && searchParams.paid === '1' && (
+          <div className="notice ok" role="status"><AutoRefresh />Thanks! We\u2019re confirming your payment with Stripe. This page updates automatically.</div>
+        )}
         {o.status === 'pending_payment' && <p className="hint">Reservation expires {new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: process.env.APP_TIMEZONE || 'America/New_York' }).format(new Date(o.expires_at))}.</p>}
         {o.delivery_note && (
           <div className="notice"><strong>From the seller:</strong><br />{o.delivery_note}</div>

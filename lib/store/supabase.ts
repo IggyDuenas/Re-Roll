@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { config } from '../config';
+import { isBuyable } from '../listing';
 import { feeFor, payoutFor } from '../pricing';
 import { newToken } from '../tokens';
 import {
@@ -18,8 +19,9 @@ const fail = (error: { message: string } | null) => {
   if (error) throw new Error(`Supabase: ${error.message}`);
 };
 const now = () => new Date().toISOString();
-const pub = ({ seller_token, seller_phone, proof_note, ...rest }: ListingRow): PublicListing => rest;
-const PUBLIC_COLS = 'id,event_id,seller_name,face_value_cents,price_cents,status,created_at';
+const pub = ({ seller_token, seller_phone, proof_note, stripe_account_id, ...rest }: ListingRow): PublicListing => rest;
+const PUBLIC_COLS = 'id,event_id,seller_name,face_value_cents,price_cents,status,payouts_ready,created_at';
+const visible = <T extends { payouts_ready: boolean }>(rows: T[]) => rows.filter((r) => !config.stripeEnabled || r.payouts_ready);
 
 /** Unpaid reservations lapse and free their listing (each step is a conditional update, so races are safe). */
 async function sweep() {
@@ -56,9 +58,9 @@ async function sellerListing(token: string): Promise<ListingRow> {
 }
 
 async function withStats(e: EventRow): Promise<EventWithStats> {
-  const { data, error } = await db().from('listings').select('price_cents').eq('event_id', e.id).eq('status', 'active');
+  const { data, error } = await db().from('listings').select('price_cents,payouts_ready').eq('event_id', e.id).eq('status', 'active');
   fail(error);
-  const prices = (data ?? []).map((r) => r.price_cents as number);
+  const prices = visible((data ?? []) as any[]).map((r) => r.price_cents as number);
   return { ...e, activeListings: prices.length, fromPriceCents: prices.length ? Math.min(...prices) : null };
 }
 
@@ -84,7 +86,7 @@ export const supabaseStore: Store = {
     const { data, error } = await db().from('listings').select(PUBLIC_COLS).eq('event_id', eventId).eq('status', 'active')
       .order('price_cents').order('created_at');
     fail(error);
-    return (data ?? []) as PublicListing[];
+    return visible((data ?? []) as PublicListing[]);
   },
 
   async getListing(id) {
@@ -101,7 +103,7 @@ export const supabaseStore: Store = {
     if (Date.parse(ev.starts_at) <= Date.now()) throw new StoreError('invalid_state');
     const { data, error: ierr } = await db().from('listings').insert({
       event_id: input.eventId, seller_token: newToken(), seller_phone: input.sellerPhone, seller_name: input.sellerName,
-      face_value_cents: input.faceValueCents, price_cents: input.priceCents, proof_note: input.proofNote, status: 'active',
+      face_value_cents: input.faceValueCents, price_cents: input.priceCents, proof_note: input.proofNote, status: 'active', payouts_ready: false,
     }).select('*').single();
     fail(ierr);
     return data as ListingRow;
@@ -132,6 +134,7 @@ export const supabaseStore: Store = {
     const { data: l, error } = await db().from('listings').select('*').eq('id', listingId).maybeSingle();
     fail(error);
     if (!l) throw new StoreError('listing_not_found');
+    if (!isBuyable(l as ListingRow)) throw new StoreError('invalid_state');
     if (l.seller_phone === buyer.phone) throw new StoreError('own_listing');
     // Claim with a conditional update: only one buyer can flip active -> reserved.
     const { data: claimed, error: cerr } = await db().from('listings').update({ status: 'reserved' }).eq('id', listingId).eq('status', 'active').select('price_cents');
@@ -162,15 +165,52 @@ export const supabaseStore: Store = {
   },
 
   async getSellerContact(listingId) {
-    const { data, error } = await db().from('listings').select('seller_phone,seller_token').eq('id', listingId).maybeSingle();
+    const { data, error } = await db().from('listings').select('seller_phone,seller_token,stripe_account_id').eq('id', listingId).maybeSingle();
     fail(error);
-    return data ? { phone: data.seller_phone as string, token: data.seller_token as string } : null;
+    return data ? { phone: data.seller_phone as string, token: data.seller_token as string, stripeAccountId: (data.stripe_account_id as string | null) ?? null } : null;
   },
 
-  async markPaid(token) {
-    const o = await transition({ col: 'buyer_token', val: token }, ['pending_payment'], { status: 'escrowed', paid_at: now() });
+  async getOrderById(orderId) {
+    const { data, error } = await db().from('orders').select('*').eq('id', orderId).maybeSingle();
+    fail(error);
+    return (data as OrderRow | null) ?? null;
+  },
+
+  async markPaidById(orderId, paymentRef) {
+    await sweep();
+    const { data, error } = await db().from('orders').update({ status: 'escrowed', paid_at: now(), payment_ref: paymentRef })
+      .eq('id', orderId).eq('status', 'pending_payment').select('*');
+    fail(error);
+    if (!data?.length) {
+      const { data: cur, error: e2 } = await db().from('orders').select('*').eq('id', orderId).maybeSingle();
+      fail(e2);
+      if (!cur) throw new StoreError('order_not_found');
+      if (paymentRef && cur.payment_ref === paymentRef) return cur as OrderRow; // webhook retry
+      throw new StoreError('invalid_state');
+    }
+    const o = data[0] as OrderRow;
     fail((await db().from('listings').update({ status: 'sold' }).eq('id', o.listing_id)).error);
     return o;
+  },
+
+  async setSellerAccount(sellerToken, accountId) {
+    const l = await sellerListing(sellerToken);
+    if (l.stripe_account_id && l.stripe_account_id !== accountId) throw new StoreError('invalid_state');
+    fail((await db().from('listings').update({ stripe_account_id: accountId }).eq('id', l.id)).error);
+  },
+
+  async setPayoutsReady(accountId, ready) {
+    fail((await db().from('listings').update({ payouts_ready: ready }).eq('stripe_account_id', accountId)).error);
+  },
+
+  async setSettlementRef(orderId, ref) {
+    fail((await db().from('orders').update({ settlement_ref: ref }).eq('id', orderId)).error);
+  },
+
+  async listPendingSettlements() {
+    const { data, error } = await db().from('orders').select('*').in('status', ['released', 'refunded']).not('payment_ref', 'is', null).is('settlement_ref', null);
+    fail(error);
+    return (data ?? []) as OrderRow[];
   },
 
   async markDelivered(sellerToken, note) {

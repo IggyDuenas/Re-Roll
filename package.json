@@ -8,14 +8,17 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "audit": "node tools/audit.mjs"
+    "audit": "node tools/audit.mjs",
+    "test:e2e": "node tools/e2e.mjs",
+    "test:stripe": "node tools/stripe-e2e.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
     "next": "^14.2.35",
     "playwright-core": "^1.64.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "stripe": "^23.0.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

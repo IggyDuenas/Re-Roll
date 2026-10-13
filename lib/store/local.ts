@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { config } from '../config';
+import { isBuyable } from '../listing';
 import { feeFor, payoutFor } from '../pricing';
 import { seedEvents, seedListings } from '../seed';
 import { newId, newToken } from '../tokens';
@@ -81,11 +82,11 @@ function write<T>(fn: (db: Db) => T): Promise<T> {
 }
 
 const now = () => new Date().toISOString();
-const pub = ({ seller_token, seller_phone, proof_note, ...rest }: ListingRow): PublicListing => rest;
+const pub = ({ seller_token, seller_phone, proof_note, stripe_account_id, ...rest }: ListingRow): PublicListing => rest;
 const sortCheapest = (a: ListingRow, b: ListingRow) => a.price_cents - b.price_cents || a.created_at.localeCompare(b.created_at);
 
 const withStats = (e: EventRow, db: Db): EventWithStats => {
-  const active = db.listings.filter((l) => l.event_id === e.id && l.status === 'active');
+  const active = db.listings.filter((l) => l.event_id === e.id && isBuyable(l));
   return { ...e, activeListings: active.length, fromPriceCents: active.length ? Math.min(...active.map((l) => l.price_cents)) : null };
 };
 
@@ -129,7 +130,7 @@ export const localStore: Store = {
 
   async listActiveListings(eventId) {
     const db = await read();
-    return db.listings.filter((l) => l.event_id === eventId && l.status === 'active').sort(sortCheapest).map(pub);
+    return db.listings.filter((l) => l.event_id === eventId && isBuyable(l)).sort(sortCheapest).map(pub);
   },
 
   async getListing(id) {
@@ -146,7 +147,7 @@ export const localStore: Store = {
       const listing: ListingRow = {
         id: newId(), event_id: e.id, seller_token: newToken(), seller_phone: input.sellerPhone, seller_name: input.sellerName,
         face_value_cents: input.faceValueCents, price_cents: input.priceCents, proof_note: input.proofNote,
-        status: 'active', created_at: now(),
+        status: 'active', created_at: now(), stripe_account_id: null, payouts_ready: false,
       };
       db.listings.push(listing);
       return listing;
@@ -174,13 +175,13 @@ export const localStore: Store = {
     return write((db) => {
       const l = db.listings.find((x) => x.id === listingId);
       if (!l) throw new StoreError('listing_not_found');
-      must(l.status === 'active');
+      must(isBuyable(l));
       if (l.seller_phone === buyer.phone) throw new StoreError('own_listing');
       l.status = 'reserved';
       const order: OrderRow = {
         id: newId(), listing_id: l.id, event_id: l.event_id, buyer_token: newToken(), buyer_phone: buyer.phone, buyer_name: buyer.name,
         price_cents: l.price_cents, fee_cents: feeFor(l.price_cents), payout_cents: payoutFor(l.price_cents),
-        status: 'pending_payment', delivery_note: null, dispute_reason: null,
+        status: 'pending_payment', payment_ref: null, settlement_ref: null, delivery_note: null, dispute_reason: null,
         expires_at: new Date(Date.now() + config.reserveMinutes * 60_000).toISOString(),
         created_at: now(), paid_at: null, delivered_at: null, closed_at: null,
       };
@@ -199,19 +200,53 @@ export const localStore: Store = {
 
   async getSellerContact(listingId) {
     const l = (await read()).listings.find((x) => x.id === listingId);
-    return l ? { phone: l.seller_phone, token: l.seller_token } : null;
+    return l ? { phone: l.seller_phone, token: l.seller_token, stripeAccountId: l.stripe_account_id } : null;
   },
 
-  markPaid(buyerToken) {
+  async getOrderById(orderId) {
+    return (await read()).orders.find((o) => o.id === orderId) ?? null;
+  },
+
+  markPaidById(orderId, paymentRef) {
     return write((db) => {
-      const o = orderBy(db, buyerToken);
-      must(o.status === 'pending_payment');
+      const o = db.orders.find((x) => x.id === orderId);
+      if (!o) throw new StoreError('order_not_found');
+      if (o.status !== 'pending_payment') {
+        if (paymentRef && o.payment_ref === paymentRef) return { ...o }; // webhook retry
+        throw new StoreError('invalid_state');
+      }
       o.status = 'escrowed';
       o.paid_at = now();
+      o.payment_ref = paymentRef;
       const l = db.listings.find((x) => x.id === o.listing_id)!;
       l.status = 'sold';
       return { ...o };
     });
+  },
+
+  setSellerAccount(sellerToken, accountId) {
+    return write((db) => {
+      const l = db.listings.find((x) => x.seller_token === sellerToken);
+      if (!l) throw new StoreError('listing_not_found');
+      if (l.stripe_account_id && l.stripe_account_id !== accountId) throw new StoreError('invalid_state');
+      l.stripe_account_id = accountId;
+    });
+  },
+
+  setPayoutsReady(accountId, ready) {
+    return write((db) => { for (const l of db.listings) if (l.stripe_account_id === accountId) l.payouts_ready = ready; });
+  },
+
+  setSettlementRef(orderId, ref) {
+    return write((db) => {
+      const o = db.orders.find((x) => x.id === orderId);
+      if (!o) throw new StoreError('order_not_found');
+      o.settlement_ref = ref;
+    });
+  },
+
+  async listPendingSettlements() {
+    return (await read()).orders.filter((o) => (o.status === 'released' || o.status === 'refunded') && o.payment_ref && !o.settlement_ref);
   },
 
   markDelivered(sellerToken, note) {

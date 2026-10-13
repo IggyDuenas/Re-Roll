@@ -11,7 +11,7 @@ npm install
 npm run dev        # http://localhost:3000
 ```
 
-No setup needed: data lives in `.data/db.json` (created and seeded with 6 events and a few demo listings on first run; delete it to reset). SMS messages print to the server console. **Payments are simulated** (see TODO).
+No setup needed: data lives in `.data/db.json` (created and seeded with 6 events and a few demo listings on first run; delete it to reset). SMS messages print to the server console. **Without `STRIPE_SECRET_KEY`, payments are simulated** and no money moves; see [Stripe escrow](#stripe-escrow).
 
 Copy `.env.example` to `.env.local` to configure:
 
@@ -20,6 +20,7 @@ Copy `.env.example` to `.env.local` to configure:
 | `MAX_MARKUP_PCT` (150) | Max asking price as % of face value |
 | `PLATFORM_FEE_PCT` (10) | Re-Roll's cut, deducted from the seller's payout |
 | `RESERVE_MINUTES` (15) | How long a buyer has to pay after reserving |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Turn on real Stripe escrow (below) |
 | `CRON_SECRET`, `ADMIN_SECRET` | Enable the operator endpoints below (disabled while unset) |
 | `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` | Use Supabase instead of the local file; run `supabase/schema.sql` first (it drops the old `tickets` table) |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` | Send real SMS |
@@ -38,7 +39,34 @@ Order states: `pending_payment → escrowed → delivered → released`, plus `d
 
 The `Store` interface is in `lib/types.ts`; implementations are `lib/store/local.ts` (writes serialized through one in-process queue, atomic file rename) and `lib/store/supabase.ts` (conditional updates `where status = ...` plus a unique index allowing one live order per listing). Payments sit behind `lib/payments.ts`.
 
+## Stripe escrow
+
+Set `STRIPE_SECRET_KEY` (start with an `sk_test_` key) and `STRIPE_WEBHOOK_SECRET` to switch from demo payments to Stripe. It uses **Connect with separate charges and transfers**:
+
+| Step | What happens |
+| --- | --- |
+| Seller onboarding | After listing, the seller clicks *Set up payouts* on their seller page → a Stripe **Express** account is created and they complete Stripe's onboarding. The listing is hidden from buyers (and can't be reserved) until the account can receive payouts. |
+| Hold | The buyer pays via **Stripe Checkout**. The charge is captured immediately into **your platform balance**, which is the escrow. (Card authorizations expire after ~7 days and events are further out, so we don't use manual capture.) The order becomes `escrowed` only when the signed `checkout.session.completed` webhook arrives. |
+| Release | Buyer confirms (or `/api/cron/settle` auto-releases 24h after the event) → a **Transfer** of `price − fee` to the seller's account, tied to the original charge. The fee simply stays in your balance. |
+| Refund | Seller can't deliver / event starts undelivered / operator resolves a dispute for the buyer → **Refund** on the PaymentIntent. Stripe doesn't return its processing fee, so refunds cost you that fee. |
+
+Setup: create a webhook endpoint at `https://<your-domain>/api/webhooks/stripe` for `checkout.session.completed` and `account.updated`, and enable **Connect** on your Stripe account. For local dev: `stripe listen --forward-to localhost:3000/api/webhooks/stripe` prints the `whsec_...` to use.
+
+Safety properties (all covered by `npm run test:stripe`): webhook signatures are verified on the raw body; handlers are idempotent; money-moving calls use idempotency keys derived from the order id; a payment that can't become an escrowed order (reservation lapsed, duplicate payment, wrong amount) is refunded automatically; a payout or refund that fails is recorded as unsettled and retried by the cron.
+
+Notes: sellers are US individuals (`country: US`); amounts are USD. Stripe's Terms for Connect/marketplaces and your resale-law obligations still apply: confirm with Stripe that this use case is allowed on your account before going live.
+
 ## Tests
+
+```bash
+npm run build
+npm run test:stripe        # offline: fake Stripe API + the app in Stripe mode (isolated data file)
+```
+
+`test:stripe` checks Re-Roll's integration against a local **fake** of the Stripe endpoints we call (`tools/fake-stripe.mjs`). It cannot prove real-Stripe behavior (declines, Connect onboarding rules, balance availability); do a test-mode run with real `sk_test_` keys before launch.
+
+Demo-mode flow:
+
 
 ```bash
 rm -rf .data && npm run build && npm start &   # in another shell:
@@ -57,7 +85,7 @@ node tools/audit.mjs http://localhost:3000 --crawl 6 --out audit-out --delay 100
 
 ## TODO
 
-- [ ] **Real payments**: Stripe adapter in `lib/payments.ts` (hold funds at payment, pay out `payout_cents` on release, refund on refund). Today `payments` is a demo that only logs.
+- [ ] Verify the Stripe adapter in test mode with real keys, then live; handle chargebacks (`charge.dispute.created`) and Connect payout failures
 - [ ] Phone-code login (sellers and buyers are identified only by phone number plus private links)
 - [ ] Ticket proof upload (screenshot) and verification; today proof is a free-text note
 - [ ] Operator dashboard for disputes (currently an authenticated endpoint; order ids are in the dispute log)

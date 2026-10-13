@@ -30,6 +30,10 @@ create table if not exists listings (
   status            text not null default 'active' check (status in ('active', 'reserved', 'sold', 'cancelled')),
   created_at        timestamptz not null default now()
 );
+-- Stripe Connect (seller payouts). Existing databases: these ALTERs add the new columns.
+alter table listings add column if not exists stripe_account_id text;
+alter table listings add column if not exists payouts_ready boolean not null default false;
+-- (payouts_ready is only consulted when STRIPE_SECRET_KEY is set)
 create index if not exists listings_event_status_idx on listings (event_id, status, price_cents);
 
 create table if not exists orders (
@@ -52,6 +56,9 @@ create table if not exists orders (
   delivered_at    timestamptz,
   closed_at       timestamptz
 );
+alter table orders add column if not exists payment_ref text;     -- Stripe PaymentIntent id
+alter table orders add column if not exists settlement_ref text;  -- Stripe Transfer / Refund id
+create index if not exists orders_pending_settlement_idx on orders (status) where payment_ref is not null and settlement_ref is null;
 create index if not exists orders_listing_idx on orders (listing_id, status);
 -- At most one live (non-expired) order per listing: a second concurrent reservation fails here.
 create unique index if not exists orders_one_live_per_listing on orders (listing_id) where status <> 'expired';

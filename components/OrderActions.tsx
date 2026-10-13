@@ -13,6 +13,7 @@ export function OrderActions({ token, status, priceLabel, demo }: { token: strin
   async function run(action: 'pay' | 'confirm' | 'dispute') {
     setBusy(true); setError('');
     const r = await postJson(`/api/orders/${token}`, { action, reason });
+    if (r.ok && r.data.redirect) { window.location.href = r.data.redirect; return; } // Stripe Checkout
     if (!r.ok) setError(r.data.error ?? 'Something went wrong.');
     router.refresh();
     setBusy(false);

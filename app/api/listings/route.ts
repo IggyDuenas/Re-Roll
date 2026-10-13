@@ -27,7 +27,7 @@ export async function POST(req: Request) {
   try {
     const listing = await getStore().createListing({ eventId, sellerPhone: phone, sellerName, faceValueCents, priceCents, proofNote });
     const link = `${baseUrl(req)}/s/${listing.seller_token}`;
-    const { sent } = await sendSms(phone, `re·roll: your listing is live at $${(priceCents / 100).toFixed(2)}. You'll receive $${((priceCents - feeFor(priceCents)) / 100).toFixed(2)} after our ${config.feePct}% fee when it sells. Manage it here: ${link}`);
+    const { sent } = await sendSms(phone, `re·roll: your listing ($${(priceCents / 100).toFixed(2)}) is created${config.stripeEnabled ? '. Set up payouts to make it visible to buyers' : ' and live'}. You'll receive $${((priceCents - feeFor(priceCents)) / 100).toFixed(2)} after our ${config.feePct}% fee when it sells. Manage it here: ${link}`);
     return json({ ok: true, listingId: listing.id, sms: sent ? 'sent' : 'console', ...(sent ? {} : { devLink: link }) }, 201);
   } catch (err) {
     return errorResponse(err);

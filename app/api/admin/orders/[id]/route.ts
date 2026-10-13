@@ -1,5 +1,5 @@
 import { errorResponse, hasBearer, json, readJson } from '@/lib/api';
-import { payments } from '@/lib/payments';
+import { settleOrder } from '@/lib/settlement';
 import { getStore } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
@@ -12,7 +12,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (action !== 'release' && action !== 'refund') return json({ error: "action must be 'release' or 'refund'." }, 400);
   try {
     const order = await getStore().resolveDispute(params.id, action);
-    if (action === 'release') await payments.release(order); else await payments.refund(order);
+    await settleOrder(getStore(), order);
     return json({ ok: true, status: order.status });
   } catch (err) {
     return errorResponse(err);

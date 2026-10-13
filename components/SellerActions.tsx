@@ -3,16 +3,17 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { postJson } from './api';
 
-export function SellerActions({ token, listingStatus, orderStatus }: { token: string; listingStatus: string; orderStatus: string | null }) {
+export function SellerActions({ token, listingStatus, orderStatus, needsPayouts }: { token: string; listingStatus: string; orderStatus: string | null; needsPayouts: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
 
-  async function run(action: 'cancel' | 'deliver' | 'refund') {
+  async function run(action: 'cancel' | 'deliver' | 'refund' | 'payout_setup') {
     if (action === 'refund' && !window.confirm('Cancel this sale and refund the buyer in full?')) return;
     setBusy(true); setError('');
     const r = await postJson(`/api/sell/${token}`, { action, note });
+    if (r.ok && r.data.redirect) { window.location.href = r.data.redirect; return; } // Stripe onboarding
     if (!r.ok) setError(r.data.error ?? 'Something went wrong.');
     router.refresh();
     setBusy(false);
@@ -20,6 +21,9 @@ export function SellerActions({ token, listingStatus, orderStatus }: { token: st
 
   return (
     <div style={{ display: 'grid', gap: 10, marginTop: 16 }}>
+      {needsPayouts && listingStatus === 'active' && (
+        <button className="btn block" onClick={() => run('payout_setup')} disabled={busy}>{busy ? 'Opening Stripe…' : 'Set up payouts to go live'}</button>
+      )}
       {listingStatus === 'active' && (
         <button className="btn ghost block" onClick={() => run('cancel')} disabled={busy}>Take my listing down</button>
       )}

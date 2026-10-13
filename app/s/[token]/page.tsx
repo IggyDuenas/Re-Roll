@@ -5,6 +5,7 @@ import { SellerActions } from '@/components/SellerActions';
 import { Disclosure, STATUS_LABEL } from '@/components/shared';
 import { config } from '@/lib/config';
 import { dateLong, money } from '@/lib/format';
+import { payments } from '@/lib/payments';
 import { getStore } from '@/lib/store';
 import { isTokenShaped } from '@/lib/tokens';
 
@@ -22,9 +23,16 @@ const COPY: Record<string, string> = {
 
 export default async function SellerPage({ params }: { params: { token: string } }) {
   if (!isTokenShaped(params.token)) notFound();
-  const v = await getStore().getSellerView(params.token);
+  const store = getStore();
+  let v = await store.getSellerView(params.token);
   if (!v) notFound();
+  // Stripe mode: when the seller returns from onboarding, check their account directly (the account.updated webhook does the same).
+  if (config.stripeEnabled && v.listing.stripe_account_id && !v.listing.payouts_ready && (await payments.payoutsReady(v.listing.stripe_account_id).catch(() => false))) {
+    await store.setPayoutsReady(v.listing.stripe_account_id, true);
+    v = (await store.getSellerView(params.token))!;
+  }
   const { listing: l, order: o, event: e } = v;
+  const needsPayouts = config.stripeEnabled && !l.payouts_ready;
   return (
     <div className="narrow">
       <Link href={`/events/${e.id}`} className="back">← {e.title}</Link>
@@ -43,7 +51,7 @@ export default async function SellerPage({ params }: { params: { token: string }
         </p>
         {o?.delivery_note && <div className="notice"><strong>Your delivery note:</strong><br />{o.delivery_note}</div>}
         {o?.dispute_reason && <div className="notice err">Buyer&apos;s report: {o.dispute_reason}</div>}
-        <SellerActions token={params.token} listingStatus={l.status} orderStatus={o?.status ?? null} />
+        <SellerActions token={params.token} listingStatus={l.status} orderStatus={o?.status ?? null} needsPayouts={needsPayouts} />
       </div>
       <div style={{ marginTop: 20 }}><Disclosure compact /></div>
     </div>

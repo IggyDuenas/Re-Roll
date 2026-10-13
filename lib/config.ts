@@ -5,6 +5,8 @@ const num = (v: string | undefined, d: number) => {
 };
 
 export const config = {
+  /** Stripe mode: real escrow via Stripe Connect. Off => demo payments. */
+  get stripeEnabled() { return !!process.env.STRIPE_SECRET_KEY; },
   /** Max asking price as a percent of face value (150 = 1.5x). */
   get maxMarkupPct() { return Math.max(num(process.env.MAX_MARKUP_PCT, 150), 100); },
   /** Platform cut, as a percent of the sale price, taken from the seller's payout. */

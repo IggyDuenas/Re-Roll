@@ -5,7 +5,7 @@ import { postJson } from './api';
 interface Opt { id: string; label: string }
 const dollars = (c: number) => `$${(c / 100).toFixed(2)}`;
 
-export function SellForm({ events, initialEvent, maxMarkupPct, feePct }: { events: Opt[]; initialEvent: string; maxMarkupPct: number; feePct: number }) {
+export function SellForm({ events, initialEvent, maxMarkupPct, feePct, needsPayouts }: { events: Opt[]; initialEvent: string; maxMarkupPct: number; feePct: number; needsPayouts: boolean }) {
   const [eventId, setEventId] = useState(initialEvent || events[0]?.id || '');
   const [face, setFace] = useState('');
   const [price, setPrice] = useState('');
@@ -36,7 +36,7 @@ export function SellForm({ events, initialEvent, maxMarkupPct, feePct }: { event
   if (done) {
     return (
       <div className="notice ok" role="status">
-        Your ticket is listed! We texted you a private link to manage it, deliver it when it sells, and track your payout.
+        {needsPayouts ? 'Almost there! Open your private seller link to set up payouts with Stripe. Your listing goes live to buyers as soon as that\u2019s done. We texted you the link too.' : 'Your ticket is listed! We texted you a private link to manage it, deliver it when it sells, and track your payout.'}
         {done.devLink && <> SMS isn&apos;t configured, so open it here: <a href={done.devLink}>{done.devLink}</a></>}
       </div>
     );

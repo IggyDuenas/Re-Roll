@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { ReserveForm } from '@/components/ReserveForm';
 import { Disclosure } from '@/components/shared';
 import { dateLong, money } from '@/lib/format';
+import { isBuyable } from '@/lib/listing';
 import { markupPct } from '@/lib/pricing';
 import { getStore } from '@/lib/store';
 
@@ -17,7 +18,7 @@ export default async function ListingPage({ params }: { params: { id: string } }
   const e = await store.getEvent(l.event_id);
   if (!e) notFound();
   const pct = markupPct(l.face_value_cents, l.price_cents);
-  const available = l.status === 'active' && Date.parse(e.starts_at) > Date.now();
+  const available = isBuyable(l) && Date.parse(e.starts_at) > Date.now();
   return (
     <div className="narrow">
       <Link href={`/events/${e.id}`} className="back">← {e.title}</Link>
