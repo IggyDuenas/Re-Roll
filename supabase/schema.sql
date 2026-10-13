@@ -1,8 +1,7 @@
 -- Re-Roll marketplace schema. Run in the Supabase SQL editor.
 -- The app talks to Supabase with the service-role key from the server only; RLS is enabled with no
--- policies so the anon key can read nothing. (Old pre-marketplace tables are dropped below.)
+-- policies so the anon key can read nothing.
 
-drop table if exists tickets cascade;
 create extension if not exists pgcrypto;
 
 create table if not exists events (
@@ -16,7 +15,6 @@ create table if not exists events (
   description  text not null default '',
   genre        text not null default ''
 );
-alter table events drop column if exists capacity;
 
 create table if not exists listings (
   id                uuid primary key default gen_random_uuid(),
