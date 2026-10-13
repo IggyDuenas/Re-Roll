@@ -39,6 +39,15 @@ Order states: `pending_payment → escrowed → delivered → released`, plus `d
 
 The `Store` interface is in `lib/types.ts`; implementations are `lib/store/local.ts` (writes serialized through one in-process queue, atomic file rename) and `lib/store/supabase.ts` (conditional updates `where status = ...` plus a unique index allowing one live order per listing). Payments sit behind `lib/payments.ts`.
 
+## Deploy to Vercel
+
+The local JSON store can't persist on Vercel, so the app refuses to start there without Supabase.
+
+1. Create a Supabase project and run `supabase/schema.sql` in its SQL editor.
+2. In Vercel: **Add New → Project → import the GitHub repo** (Framework: Next.js; no other build settings).
+3. Add environment variables: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (Supabase → Project Settings → API keys, server-side only), `APP_URL` (your production URL), `CRON_SECRET`, `ADMIN_SECRET` (long random strings, e.g. `openssl rand -hex 24`), plus the Stripe and Twilio variables when ready.
+4. Deploy. Schedule `POST /api/cron/settle` with `Authorization: Bearer $CRON_SECRET` (for example a Vercel Cron job or any scheduler).
+
 ## Stripe escrow
 
 Set `STRIPE_SECRET_KEY` (start with an `sk_test_` key) and `STRIPE_WEBHOOK_SECRET` to switch from demo payments to Stripe. It uses **Connect with separate charges and transfers**:
