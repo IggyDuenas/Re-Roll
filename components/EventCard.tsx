@@ -12,11 +12,14 @@ export function coverStyle(seed: string) {
 }
 
 /** Generated poster art: the artist name set large, like a gig poster. */
-export function Poster({ e, large = false }: { e: Pick<EventRow, 'id' | 'genre' | 'artist'>; large?: boolean }) {
+const photo = (url?: string | null) => (url ? { backgroundImage: `linear-gradient(180deg, rgba(0,0,0,.25), transparent 35%, rgba(0,0,0,.55)), url("${url}")` } : null);
+
+export function Poster({ e, large = false }: { e: Pick<EventRow, 'id' | 'genre' | 'artist' | 'image_url'>; large?: boolean }) {
+  const img = photo(e.image_url);
   return (
-    <div className={`poster${large ? ' large' : ''}`} style={coverStyle(e.id)} aria-hidden="true">
+    <div className={`poster${large ? ' large' : ''}${img ? ' photo' : ''}`} style={img ?? coverStyle(e.id)} aria-hidden="true">
       <span className="genre">{e.genre}</span>
-      <span className="art">{e.artist}</span>
+      {!img && <span className="art">{e.artist}</span>}
     </div>
   );
 }
@@ -42,7 +45,7 @@ export function EventCard({ e }: { e: EventWithStats }) {
         <div className="eprice">
           {e.activeListings > 0 && e.fromPriceCents != null
             ? <><b>From {money(e.fromPriceCents)}</b><span className="dot">·</span>{e.activeListings} {e.activeListings === 1 ? 'ticket' : 'tickets'}</>
-            : <span className="muted">No tickets yet · Face {money(e.price_cents)}</span>}
+            : <span className="muted">No tickets yet{e.price_cents > 0 && <> · Face {money(e.price_cents)}</>}</span>}
         </div>
       </div>
     </Link>
@@ -51,14 +54,14 @@ export function EventCard({ e }: { e: EventWithStats }) {
 
 export function FeaturedEvent({ e }: { e: EventWithStats }) {
   return (
-    <Link href={`/events/${e.id}`} className="feature" style={coverStyle(e.id)}>
+    <Link href={`/events/${e.id}`} className={`feature${e.image_url ? ' photo' : ''}`} style={e.image_url ? { backgroundImage: `linear-gradient(90deg, rgba(0,0,0,.8), rgba(0,0,0,.15) 70%), url("${e.image_url}")` } : coverStyle(e.id)}>
       <div className="feature-text">
         <span className="chip solid">{e.genre}</span>
         <h2>{e.title}</h2>
         <div className="feature-meta">{dateShort(e.starts_at)} · {e.venue}, {e.city}</div>
         <span className="btn light">{e.activeListings > 0 && e.fromPriceCents != null ? `Get tickets from ${money(e.fromPriceCents)}` : 'View event'}</span>
       </div>
-      <span className="feature-art" aria-hidden="true">{e.artist}</span>
+      {!e.image_url && <span className="feature-art" aria-hidden="true">{e.artist}</span>}
     </Link>
   );
 }

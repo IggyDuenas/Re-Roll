@@ -229,3 +229,6 @@ footer { margin-top: 24px; }
 .switch input:checked + .track .knob { transform: translateX(18px); background: #000; }
 .switch input:focus-visible + .track { box-shadow: 0 0 0 3px rgba(255,255,255,.3); }
 .sell-panel { background: transparent; border: 0; padding: 0; }
+
+.poster.photo, .feature.photo { background-size: cover; background-position: center; }
+.feature.photo { min-height: 380px; }

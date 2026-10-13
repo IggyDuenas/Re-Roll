@@ -21,3 +21,6 @@ export async function POST(req: Request) {
     return errorResponse(err);
   }
 }
+
+/** Vercel Cron issues GET requests (with the same bearer header). */
+export const GET = POST;

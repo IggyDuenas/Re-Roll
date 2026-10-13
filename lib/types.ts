@@ -11,6 +11,10 @@ export interface EventRow {
   price_cents: number; // typical face value, for reference
   description: string;
   genre: string;
+  /** set for events imported from an external feed */
+  image_url?: string | null;
+  source_url?: string | null;
+  external_id?: string | null;
 }
 
 export interface EventWithStats extends EventRow {
@@ -82,6 +86,10 @@ export interface CreateListingInput {
 export interface Store {
   listEvents(query?: string): Promise<EventWithStats[]>;
   getEvent(id: string): Promise<EventWithStats | null>;
+  /** Insert or update events by id (used by the feed importer). */
+  upsertEvents(events: EventRow[]): Promise<number>;
+  /** Delete the given events, but only those that have no listings. Returns how many were removed. */
+  deleteEventsWithoutListings(ids: string[]): Promise<number>;
   listActiveListings(eventId: string): Promise<PublicListing[]>;
   getListing(id: string): Promise<PublicListing | null>;
 

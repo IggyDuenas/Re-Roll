@@ -128,6 +128,24 @@ export const localStore: Store = {
     return e ? withStats(e, db) : null;
   },
 
+  async upsertEvents(events) {
+    return write((db) => {
+      for (const e of events) {
+        const i = db.events.findIndex((x) => x.id === e.id);
+        if (i >= 0) db.events[i] = { ...db.events[i], ...e }; else db.events.push(e);
+      }
+      return events.length;
+    });
+  },
+
+  async deleteEventsWithoutListings(ids) {
+    return write((db) => {
+      const drop = new Set(ids.filter((id) => !db.listings.some((l) => l.event_id === id)));
+      db.events = db.events.filter((e) => !drop.has(e.id));
+      return drop.size;
+    });
+  },
+
   async listActiveListings(eventId) {
     const db = await read();
     return db.listings.filter((l) => l.event_id === eventId && isBuyable(l)).sort(sortCheapest).map(pub);

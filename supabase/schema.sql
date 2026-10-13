@@ -13,8 +13,14 @@ create table if not exists events (
   starts_at    timestamptz not null,
   price_cents  integer not null check (price_cents >= 0),  -- typical face value, reference only
   description  text not null default '',
-  genre        text not null default ''
+  genre        text not null default '',
+  image_url    text,
+  source_url   text,
+  external_id  text
 );
+alter table events add column if not exists image_url   text;
+alter table events add column if not exists source_url  text;
+alter table events add column if not exists external_id text;
 
 create table if not exists listings (
   id                uuid primary key default gen_random_uuid(),

@@ -81,6 +81,26 @@ export const supabaseStore: Store = {
     return data ? withStats(data as EventRow) : null;
   },
 
+  async upsertEvents(events) {
+    for (let i = 0; i < events.length; i += 100) {
+      const { error } = await db().from('events').upsert(events.slice(i, i + 100), { onConflict: 'id' });
+      fail(error);
+    }
+    return events.length;
+  },
+
+  async deleteEventsWithoutListings(ids) {
+    if (!ids.length) return 0;
+    const { data: used, error: e1 } = await db().from('listings').select('event_id').in('event_id', ids);
+    fail(e1);
+    const keep = new Set((used ?? []).map((r: any) => r.event_id as string));
+    const drop = ids.filter((id) => !keep.has(id));
+    if (!drop.length) return 0;
+    const { error } = await db().from('events').delete().in('id', drop);
+    fail(error);
+    return drop.length;
+  },
+
   async listActiveListings(eventId) {
     await sweep();
     const { data, error } = await db().from('listings').select(PUBLIC_COLS).eq('event_id', eventId).eq('status', 'active')
