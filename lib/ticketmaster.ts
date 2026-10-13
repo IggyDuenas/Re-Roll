@@ -8,7 +8,7 @@ interface TmEvent {
   images?: TmImage[];
   dates?: { start?: { dateTime?: string }; status?: { code?: string } };
   priceRanges?: { min?: number }[];
-  classifications?: { segment?: { name?: string }; genre?: { name?: string } }[];
+  classifications?: { segment?: { name?: string }; genre?: { name?: string }; subGenre?: { name?: string } }[];
   _embedded?: { venues?: { name?: string; city?: { name?: string }; state?: { stateCode?: string } }[]; attractions?: { name?: string }[] };
 }
 
@@ -26,7 +26,8 @@ export function mapEvent(t: TmEvent): EventRow | null {
   const v = t._embedded?.venues?.[0];
   if (!starts || !v?.name || code === 'cancelled' || code === 'postponed') return null;
   const cls = t.classifications?.[0];
-  const genre = [cls?.genre?.name, cls?.segment?.name].find((g) => g && g !== 'Undefined') ?? 'Live';
+  const sub = cls?.subGenre?.name;
+  const genre = (cls?.genre?.name === 'Dance/Electronic' && sub && sub !== 'Undefined' ? sub : [cls?.genre?.name, cls?.segment?.name].find((g) => g && g !== 'Undefined')) ?? 'Live';
   const min = t.priceRanges?.[0]?.min;
   const city = v.city?.name ?? '';
   return {
@@ -45,32 +46,63 @@ export function mapEvent(t: TmEvent): EventRow | null {
   };
 }
 
+const DANCE_GENRE_ID = 'KnvZfZ7vAvF'; // Ticketmaster "Dance/Electronic"
+const csv = (v: string | undefined, fallback: string[]) => (v === undefined ? fallback : v.split(',').map((x) => x.trim()).filter(Boolean));
+
+/** Artists and venues that are always wanted, even when Ticketmaster files them under another genre. */
+export const DEFAULT_ARTISTS = ['Prospa', 'Antor', 'III Points', 'Circo Loco', 'Fisher'];
+export const DEFAULT_VENUES = ['Club Space'];
+
+const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+const hasWord = (haystack: string, needle: string) => ` ${norm(haystack)} `.includes(` ${norm(needle)} `);
+
+/** House/EDM only: Dance/Electronic genre, or a named artist, or a named venue. */
+export function isWanted(t: TmEvent, artists: string[], venues: string[]): boolean {
+  const cls = t.classifications?.[0];
+  if (cls?.genre?.name === 'Dance/Electronic') return true;
+  // Artists must be the billed act (or the festival name), not just a word in the event title or venue.
+  const acts = [...(t._embedded?.attractions?.map((a) => a.name ?? '') ?? []), t.name].map(norm);
+  if (artists.some((a) => acts.some((n) => n === norm(a) || n.startsWith(`${norm(a)} `)))) return true;
+  const venue = t._embedded?.venues?.[0]?.name ?? '';
+  return venues.some((v) => hasWord(venue, v));
+}
+
+async function page(params: Record<string, string>) {
+  const u = new URL(API);
+  u.search = new URLSearchParams(params).toString();
+  const res = await fetch(u, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`Ticketmaster API returned ${res.status}.`);
+  return (await res.json()) as { _embedded?: { events?: TmEvent[] }; page?: { totalPages?: number } };
+}
+
 /**
- * Pulls upcoming music events from the Ticketmaster Discovery API (free key from developer.ticketmaster.com).
- * TICKETMASTER_CITIES (comma list, optional) narrows the feed; otherwise the most popular US events are used.
+ * Pulls upcoming house/EDM events from the Ticketmaster Discovery API (free key from developer.ticketmaster.com).
+ * - every Dance/Electronic event (optionally narrowed by TICKETMASTER_CITIES),
+ * - plus searches for the wanted artists (TICKETMASTER_ARTISTS) and venues (TICKETMASTER_VENUES),
+ * and then keeps only events that pass isWanted().
  */
 export async function fetchTicketmasterEvents(): Promise<EventRow[]> {
   const key = process.env.TICKETMASTER_API_KEY;
   if (!key) throw new Error('TICKETMASTER_API_KEY is not set.');
-  const cities = (process.env.TICKETMASTER_CITIES ?? '').split(',').map((c) => c.trim()).filter(Boolean);
-  const start = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
-  const queries = cities.length ? cities : [''];
+  const cities = csv(process.env.TICKETMASTER_CITIES, []);
+  const artists = csv(process.env.TICKETMASTER_ARTISTS, DEFAULT_ARTISTS);
+  const venues = csv(process.env.TICKETMASTER_VENUES, DEFAULT_VENUES);
+  const base = { apikey: key, countryCode: 'US', size: '100', sort: 'date,asc', startDateTime: new Date().toISOString().replace(/\.\d+Z$/, 'Z') };
+
+  const jobs: Record<string, string>[] = [
+    ...(cities.length ? cities : ['']).map((city) => ({ ...base, genreId: DANCE_GENRE_ID, ...(city ? { city } : {}) })),
+    ...[...artists, ...venues].map((keyword) => ({ ...base, keyword, classificationName: 'music' })),
+  ];
   const out = new Map<string, EventRow>();
-  for (const city of queries) {
-    for (let page = 0; page < 3; page++) {
-      const u = new URL(API);
-      u.search = new URLSearchParams({
-        apikey: key, countryCode: 'US', classificationName: 'music', size: '100', page: String(page),
-        sort: 'relevance,desc', startDateTime: start, ...(city ? { city } : {}),
-      }).toString();
-      const res = await fetch(u, { cache: 'no-store' });
-      if (!res.ok) throw new Error(`Ticketmaster API returned ${res.status}.`);
-      const body = (await res.json()) as { _embedded?: { events?: TmEvent[] }; page?: { totalPages?: number } };
+  for (const job of jobs) {
+    for (let p = 0; p < 3; p++) {
+      const body = await page({ ...job, page: String(p) });
       for (const t of body._embedded?.events ?? []) {
+        if (!isWanted(t, artists, venues)) continue;
         const e = mapEvent(t);
         if (e) out.set(e.id, e);
       }
-      if (page + 1 >= (body.page?.totalPages ?? 1)) break;
+      if (p + 1 >= (body.page?.totalPages ?? 1)) break;
     }
   }
   return [...out.values()];
