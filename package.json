@@ -1,0 +1,28 @@
+{
+  "name": "re-roll",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Face-value ticket resale: can't go? Re-roll it.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "audit": "node tools/audit.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.3",
+    "next": "^14.2.35",
+    "playwright-core": "^1.64.0",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "5.6"
+  }
+}
