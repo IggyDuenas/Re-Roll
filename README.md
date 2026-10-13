@@ -1,8 +1,8 @@
 # re·roll
 
-A fan-to-fan ticket marketplace. Fans who can't go list their ticket (for example a Dice ticket) at a **capped** price; buyers pay into **escrow**; the seller delivers; Re-Roll releases the money and keeps a cut.
+A peer-to-peer ticket marketplace. Fans who can't go list their ticket at a **capped** price; buyers pay into **escrow**; the seller delivers; Re-Roll releases the money and keeps a cut.
 
-Re-Roll is independent of Dice and event organizers. Ticket issuers may not permit resale and can cancel resold tickets, so the product states this on every sell/buy page. Check the resale laws where you operate before launching.
+Re-Roll is independent of event organizers and ticketing companies. Ticket issuers may not permit resale and can cancel resold tickets, so the product states this on every sell/buy page. Check the resale laws where you operate before launching.
 
 ## Quick start
 
@@ -28,7 +28,7 @@ Copy `.env.example` to `.env.local` to configure:
 
 ## How a sale works
 
-1. **List** (`/sell`): seller picks an event, enters the face value they paid, an asking price (≤ cap), their Dice order reference (private, for disputes), and confirms ownership. They get a private seller link by SMS.
+1. **List** (`/sell`): seller picks an event, enters the face value they paid, an asking price (≤ cap), their order reference (private, for disputes), and confirms ownership. They get a private seller link by SMS.
 2. **Reserve** (`/l/[id]`): a buyer reserves the listing. The claim is atomic, so only one buyer wins. The reservation lapses after `RESERVE_MINUTES` and the listing goes back on sale.
 3. **Pay** (`/o/[token]`): the buyer's payment goes into escrow. Seller is texted.
 4. **Deliver** (`/s/[token]`): the seller delivers the ticket outside Re-Roll and marks it delivered with a note. Buyer is texted.

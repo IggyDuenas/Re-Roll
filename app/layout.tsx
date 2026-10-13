@@ -3,8 +3,8 @@ import Link from 'next/link';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: { default: 're·roll: buy tickets from fans', template: '%s · re·roll' },
-  description: 'A fan-to-fan ticket marketplace. Buy sold-out show tickets from fans with capped prices and escrow protection.',
+  title: { default: 're·roll: peer-to-peer tickets', template: '%s · re·roll' },
+  description: 'Peer-to-peer ticket marketplace. Buy and sell tickets directly with other fans, with capped prices and escrow protection.',
 };
 export const viewport: Viewport = { themeColor: '#000000', width: 'device-width', initialScale: 1 };
 
@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </header>
         <main className="wrap">{children}</main>
         <footer>
-          <div className="wrap">re·roll is an independent marketplace, not affiliated with Dice. Resale prices are capped and payments are held in escrow.</div>
+          <div className="wrap">re·roll is an independent peer-to-peer marketplace, not affiliated with event organizers or ticketing companies. Resale prices are capped and payments are held in escrow.</div>
         </footer>
       </body>
     </html>

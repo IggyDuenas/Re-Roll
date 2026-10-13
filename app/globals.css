@@ -232,3 +232,13 @@ footer { margin-top: 24px; }
 
 .poster.photo, .feature.photo { background-size: cover; background-position: center; }
 .feature.photo { min-height: 380px; }
+
+.p2p { padding: 8px 0 4px; }
+.p2p h1 { font-size: clamp(2.2rem, 7vw, 4rem); font-weight: 900; letter-spacing: -0.05em; line-height: 1; }
+.p2p > p { color: #b9b9c0; max-width: 56ch; margin: 12px 0 20px; font-size: 1.05rem; }
+.how { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 10px; }
+@media (min-width: 720px) { .how { grid-template-columns: repeat(3, 1fr); } }
+.how li { display: flex; gap: 12px; align-items: flex-start; border: 1px solid var(--line); border-radius: 10px; padding: 14px; background: var(--card); }
+.how b { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: #fff; color: #000; font-size: .85rem; }
+.how span { color: var(--muted); font-size: .9rem; }
+.how strong { display: block; color: #fff; font-size: 1rem; }

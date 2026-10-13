@@ -31,7 +31,7 @@ export interface ListingRow {
   seller_name: string | null;
   face_value_cents: number;
   price_cents: number;
-  proof_note: string; // Dice order reference / details the seller provided
+  proof_note: string; // order reference / details the seller provided
   stripe_account_id: string | null; // seller's Stripe Connect Express account (Stripe mode)
   payouts_ready: boolean; // seller finished payout onboarding; required to be buyable in Stripe mode
   status: ListingStatus;

@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   const pricingError = validatePricing(faceValueCents, priceCents);
   if (pricingError) return json({ error: pricingError, code: 'bad_price' }, 400);
   const proofNote = text(body.proofNote, 500);
-  if (proofNote.length < 4) return json({ error: 'Add your Dice order reference or ticket details so buyers and our team can check it.' }, 400);
+  if (proofNote.length < 4) return json({ error: 'Add your order reference or ticket details so buyers and our team can check it.' }, 400);
   if (body.confirmOwnership !== true) return json({ error: 'Please confirm you own this ticket and understand the resale terms.' }, 400);
   const sellerName = text(body.name, 60) || null;
 

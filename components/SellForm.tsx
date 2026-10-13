@@ -127,7 +127,7 @@ export function SellForm({ events, initialEvent, maxMarkupPct, feePct, needsPayo
             <button type="button" className="change" onClick={() => setStep(1)}>Edit</button>
           </div>
           <div className="field">
-            <label htmlFor="proof">Dice order reference / ticket details</label>
+            <label htmlFor="proof">Order reference / ticket details</label>
             <input id="proof" type="text" placeholder="Order #, name on the order, section…" value={proof} onChange={(e) => setProof(e.target.value)} maxLength={500} required />
             <div className="hint">Only shared with our team to resolve disputes. Never shown publicly.</div>
           </div>

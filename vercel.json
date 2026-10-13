@@ -1,6 +1,5 @@
 {
   "crons": [
-    { "path": "/api/cron/events", "schedule": "0 9 * * *" },
     { "path": "/api/cron/settle", "schedule": "0 10 * * *" }
   ]
 }
