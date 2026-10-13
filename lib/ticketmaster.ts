@@ -61,7 +61,8 @@ export function isWanted(t: TmEvent, artists: string[], venues: string[]): boole
   const cls = t.classifications?.[0];
   if (cls?.genre?.name === 'Dance/Electronic') return true;
   // Artists must be the billed act (or the festival name), not just a word in the event title or venue.
-  const acts = [...(t._embedded?.attractions?.map((a) => a.name ?? '') ?? []), t.name].map(norm);
+  const billed = t._embedded?.attractions?.map((a) => a.name ?? '') ?? [];
+  const acts = (billed.length ? billed : [t.name]).map(norm);
   if (artists.some((a) => acts.some((n) => n === norm(a) || n.startsWith(`${norm(a)} `)))) return true;
   const venue = t._embedded?.venues?.[0]?.name ?? '';
   return venues.some((v) => hasWord(venue, v));
