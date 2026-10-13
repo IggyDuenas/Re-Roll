@@ -4,8 +4,10 @@ import type { EventRow, EventWithStats } from '@/lib/types';
 
 export function coverStyle(seed: string) {
   const h = hueOf(seed);
+  const l = 14 + (h % 5) * 4; // 14-30% grey
+  const angle = 120 + (h % 7) * 20;
   return {
-    background: `radial-gradient(120% 80% at 20% 0%, hsl(${(h + 40) % 360} 85% 55% / .85), transparent 60%), linear-gradient(160deg, hsl(${h} 75% 34%), hsl(${(h + 70) % 360} 70% 14%) 75%, #050507)`,
+    background: `radial-gradient(120% 80% at ${20 + (h % 5) * 15}% 0%, rgba(255,255,255,.28), transparent 60%), linear-gradient(${angle}deg, hsl(0 0% ${l + 14}%), hsl(0 0% ${l}%) 60%, #000)`,
   };
 }
 
