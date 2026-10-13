@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { coverStyle } from '@/components/EventCard';
+import { Poster } from '@/components/EventCard';
 import { Disclosure } from '@/components/shared';
 import { dateLong, money } from '@/lib/format';
 import { markupPct } from '@/lib/pricing';
@@ -21,13 +21,18 @@ export default async function EventPage({ params }: { params: { id: string } }) 
   const past = new Date(e.starts_at).getTime() <= Date.now();
   const listings = past ? [] : await store.listActiveListings(e.id);
   return (
-    <article className="detail narrow">
+    <article className="detail event-page">
       <Link href="/" className="back">← All events</Link>
-      <div className="cover tall" style={coverStyle(e.id)}><span className="genre">{e.genre}</span></div>
+      <div className="event-cols">
+      <div className="event-poster"><Poster e={e} large /></div>
+      <div className="event-main">
       <h1>{e.title}</h1>
-      <div className="meta">{e.artist !== e.title && <>{e.artist} · </>}{dateLong(e.starts_at)}</div>
-      <div className="meta">{e.venue}, {e.city}</div>
-      <p>{e.description}</p>
+      <div className="event-lines">
+        <div><b>{dateLong(e.starts_at)}</b></div>
+        <div>{e.venue}, {e.city}</div>
+        {e.artist !== e.title && <div className="meta">{e.artist}</div>}
+      </div>
+      <p className="desc">{e.description}</p>
 
       <section className="panel" aria-labelledby="tix">
         <div className="row" style={{ marginTop: 0, marginBottom: 12 }}>
@@ -45,9 +50,9 @@ export default async function EventPage({ params }: { params: { id: string } }) 
                     <Link href={`/l/${l.id}`} className="listing">
                       <div>
                         <div className="price">{money(l.price_cents)}</div>
-                        <div className="meta">Face value {money(l.face_value_cents)} · {l.seller_name ?? 'A fan'}</div>
+                        <div className="meta">Face value {money(l.face_value_cents)}{pct > 0 ? ` · +${pct}%` : ''} · {l.seller_name ?? 'A fan'}</div>
                       </div>
-                      <span className={`badge ${pct > 0 ? 'reroll' : 'left'}`}>{pct > 0 ? `+${pct}% over face` : 'Face value'}</span>
+                      <span className="btn light sm">Get</span>
                     </Link>
                   </li>
                 );
@@ -56,6 +61,8 @@ export default async function EventPage({ params }: { params: { id: string } }) 
           )}
       </section>
       <div style={{ marginTop: 20 }}><Disclosure compact /></div>
+      </div>
+      </div>
     </article>
   );
 }

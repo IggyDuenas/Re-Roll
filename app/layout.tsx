@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   title: { default: 're·roll: buy tickets from fans', template: '%s · re·roll' },
   description: 'A fan-to-fan ticket marketplace. Buy sold-out show tickets from fans with capped prices and escrow protection.',
 };
-export const viewport: Viewport = { themeColor: '#0a0a0f', width: 'device-width', initialScale: 1 };
+export const viewport: Viewport = { themeColor: '#000000', width: 'device-width', initialScale: 1 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

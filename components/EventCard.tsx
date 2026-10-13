@@ -1,10 +1,22 @@
 import Link from 'next/link';
 import { dateShort, hueOf, money } from '@/lib/format';
-import type { EventWithStats } from '@/lib/types';
+import type { EventRow, EventWithStats } from '@/lib/types';
 
 export function coverStyle(seed: string) {
   const h = hueOf(seed);
-  return { background: `linear-gradient(135deg, hsl(${h} 70% 38%), hsl(${(h + 70) % 360} 65% 22%) 70%, #0a0a0f)` };
+  return {
+    background: `radial-gradient(120% 80% at 20% 0%, hsl(${(h + 40) % 360} 85% 55% / .85), transparent 60%), linear-gradient(160deg, hsl(${h} 75% 34%), hsl(${(h + 70) % 360} 70% 14%) 75%, #050507)`,
+  };
+}
+
+/** Generated poster art: the artist name set large, like a gig poster. */
+export function Poster({ e, large = false }: { e: Pick<EventRow, 'id' | 'genre' | 'artist'>; large?: boolean }) {
+  return (
+    <div className={`poster${large ? ' large' : ''}`} style={coverStyle(e.id)} aria-hidden="true">
+      <span className="genre">{e.genre}</span>
+      <span className="art">{e.artist}</span>
+    </div>
+  );
 }
 
 export function Badges({ e }: { e: EventWithStats }) {
@@ -19,16 +31,32 @@ export function Badges({ e }: { e: EventWithStats }) {
 
 export function EventCard({ e }: { e: EventWithStats }) {
   return (
-    <Link href={`/events/${e.id}`} className="card">
-      <div className="cover" style={coverStyle(e.id)}><span className="genre">{e.genre}</span></div>
-      <div className="body">
+    <Link href={`/events/${e.id}`} className="ecard">
+      <Poster e={e} />
+      <div className="ebody">
+        <div className="edate">{dateShort(e.starts_at)}</div>
         <h3>{e.title}</h3>
-        <div className="meta">{dateShort(e.starts_at)} · {e.venue}, {e.city}</div>
-        <div className="row">
-          <span className="price">{e.fromPriceCents != null ? <>from {money(e.fromPriceCents)}</> : <span className="meta">Face {money(e.price_cents)}</span>}</span>
-          <Badges e={e} />
+        <div className="meta">{e.venue}, {e.city}</div>
+        <div className="eprice">
+          {e.activeListings > 0 && e.fromPriceCents != null
+            ? <><b>From {money(e.fromPriceCents)}</b><span className="dot">·</span>{e.activeListings} {e.activeListings === 1 ? 'ticket' : 'tickets'}</>
+            : <span className="muted">No tickets yet · Face {money(e.price_cents)}</span>}
         </div>
       </div>
+    </Link>
+  );
+}
+
+export function FeaturedEvent({ e }: { e: EventWithStats }) {
+  return (
+    <Link href={`/events/${e.id}`} className="feature" style={coverStyle(e.id)}>
+      <div className="feature-text">
+        <span className="chip solid">{e.genre}</span>
+        <h2>{e.title}</h2>
+        <div className="feature-meta">{dateShort(e.starts_at)} · {e.venue}, {e.city}</div>
+        <span className="btn light">{e.activeListings > 0 && e.fromPriceCents != null ? `Get tickets from ${money(e.fromPriceCents)}` : 'View event'}</span>
+      </div>
+      <span className="feature-art" aria-hidden="true">{e.artist}</span>
     </Link>
   );
 }
